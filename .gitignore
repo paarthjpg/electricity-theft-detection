@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .DS_Store
+.claude/
 
 # Large data/artifact outputs (regenerate via scripts/prepare_data.py and scripts/run_training.py)
 data/raw/*.csv
