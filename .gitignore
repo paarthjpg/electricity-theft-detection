@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+
+# Large data/artifact outputs (regenerate via scripts/prepare_data.py and scripts/run_training.py)
+data/raw/*.csv
+data/processed/
+data/processed_quick/
+artifacts/models/*.pt
+artifacts/models/*.joblib
+artifacts/figures/*.png
+
+# Keep small tracked docs/configs even inside artifacts/metrics
+!artifacts/metrics/.gitkeep

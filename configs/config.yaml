@@ -1,0 +1,54 @@
+seed: 42
+
+paths:
+  raw_data: data/raw/sgcc_data.csv
+  processed_dir: data/processed
+  artifacts_dir: artifacts
+  models_dir: artifacts/models
+  metrics_dir: artifacts/metrics
+  figures_dir: artifacts/figures
+
+schema:
+  # Configurable schema loader: column names as they appear in the raw CSV.
+  # Change these if a different SGCC release uses different headers.
+  customer_id_col: CONS_NO
+  label_col: FLAG
+  # Any column not equal to customer_id_col / label_col is treated as a
+  # daily-consumption reading column, keyed by its date string.
+  date_column_format: "%Y/%m/%d"
+
+split:
+  train_frac: 0.70
+  val_frac: 0.15
+  test_frac: 0.15
+
+preprocessing:
+  extreme_value_zscore_threshold: 6.0
+  min_customer_coverage: 0.10 # drop customers with <10% non-missing readings
+
+graph:
+  k: 5
+  metric: cosine
+  self_loops: true # GCN requires self-loops; SAGE handles separately
+
+quick_mode:
+  enabled: false
+  subset_size: 4000
+  max_epochs: 15
+  patience: 5
+
+full_mode:
+  max_epochs: 100
+  patience: 15
+
+model:
+  hidden_dim_1: 64
+  hidden_dim_2: 32
+  dropout: 0.3
+  learning_rate: 0.001
+  weight_decay: 0.0005
+
+risk_thresholds:
+  low_max: 0.33
+  medium_max: 0.66
+  # above medium_max => high risk

@@ -1,0 +1,15 @@
+numpy==2.4.6
+pandas==2.3.3
+scikit-learn==1.9.0
+scipy==1.17.1
+torch==2.12.1
+torch-geometric==2.8.1
+plotly==6.7.0
+streamlit==1.54.0
+networkx==3.6.1
+matplotlib==3.10.8
+seaborn==0.13.2
+joblib==1.5.3
+pytest==9.1.1
+pyyaml==6.0.3
+xgboost==2.1.3
