@@ -72,19 +72,6 @@ def plot_model_comparison_bars(comparison: dict[str, dict], metric: str, out_pat
     plt.close(fig)
 
 
-def plot_training_curves(history: dict, model_name: str, out_path: Path):
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
-    ax1.plot(history["train_loss"])
-    ax1.set_title(f"{model_name} — Training Loss")
-    ax1.set_xlabel("Epoch")
-    ax2.plot(history["val_pr_auc"])
-    ax2.set_title(f"{model_name} — Validation PR-AUC")
-    ax2.set_xlabel("Epoch")
-    fig.tight_layout()
-    fig.savefig(out_path, dpi=150)
-    plt.close(fig)
-
-
 def plot_class_distribution(labels: np.ndarray, out_path: Path):
     fig, ax = plt.subplots(figsize=(5, 4))
     counts = np.bincount(labels.astype(int))

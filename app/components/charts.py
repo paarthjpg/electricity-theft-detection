@@ -87,15 +87,6 @@ def precision_at_k_chart(results: dict) -> go.Figure:
     return fig
 
 
-def training_curve_chart(history: dict) -> go.Figure:
-    from plotly.subplots import make_subplots
-    fig = make_subplots(rows=1, cols=2, subplot_titles=("Training Loss", "Validation PR-AUC"))
-    fig.add_trace(go.Scatter(y=history["train_loss"], mode="lines", name="train_loss"), row=1, col=1)
-    fig.add_trace(go.Scatter(y=history["val_pr_auc"], mode="lines", name="val_pr_auc"), row=1, col=2)
-    fig.update_layout(template=TEMPLATE, showlegend=False)
-    return fig
-
-
 def consumption_history_chart(dates: list[str], readings: list[float], customer_id: str) -> go.Figure:
     df = pd.DataFrame({"date": pd.to_datetime(dates), "consumption": readings})
     fig = px.line(df, x="date", y="consumption", template=TEMPLATE)

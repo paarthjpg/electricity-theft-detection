@@ -38,11 +38,6 @@ def test_data_exploration_page_starts_without_exception():
     assert not at.exception
 
 
-def test_graph_visualization_page_starts_without_exception():
-    at = _run_page("graph_visualization.py")
-    assert not at.exception
-
-
 def test_model_performance_page_handles_missing_metrics_gracefully():
     at = _run_page("model_performance.py")
     assert not at.exception

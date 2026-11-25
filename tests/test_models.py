@@ -2,85 +2,63 @@ import sys
 from pathlib import Path
 
 import numpy as np
-import torch
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.graph.graph_builder import build_training_graph, build_inductive_edges, combine_graphs
-from src.models.gcn import GCN
-from src.models.graphsage import GraphSAGE
+from src.models.baselines import (
+    get_logistic_regression_grid, get_random_forest_grid, get_xgboost_grid,
+    build_logistic_regression, build_random_forest, build_xgboost, XGBOOST_AVAILABLE,
+)
 
 
-def _toy_graph(n=40, d=10, seed=0):
+def _toy_data(n=80, d=10, seed=0):
     rng = np.random.default_rng(seed)
-    feats = rng.normal(size=(n, d)).astype(np.float32)
-    graph = build_training_graph(feats, k=5)
-    return feats, graph
+    X = rng.normal(size=(n, d)).astype(np.float32)
+    y = rng.integers(0, 2, size=n)
+    return X, y
 
 
-def test_gcn_forward_pass_output_shape():
-    feats, graph = _toy_graph()
-    model = GCN(in_dim=feats.shape[1], hidden_dim_1=16, hidden_dim_2=8, dropout=0.3)
-    x = torch.tensor(feats)
-    logits = model(x, graph.edge_index, graph.edge_weight)
-    assert logits.shape == (feats.shape[0],)
+def test_logistic_regression_grid_has_multiple_candidates():
+    grid = get_logistic_regression_grid(seed=42)
+    assert len(grid) > 1
+    assert all(p["class_weight"] == "balanced" for p in grid)
 
 
-def test_graphsage_forward_pass_output_shape():
-    feats, graph = _toy_graph()
-    model = GraphSAGE(in_dim=feats.shape[1], hidden_dim_1=16, hidden_dim_2=8, dropout=0.3)
-    x = torch.tensor(feats)
-    logits = model(x, graph.edge_index)
-    assert logits.shape == (feats.shape[0],)
+def test_logistic_regression_fits_and_predicts_probabilities():
+    X, y = _toy_data()
+    params = get_logistic_regression_grid(seed=42)[0]
+    model = build_logistic_regression(params)
+    model.fit(X, y)
+    proba = model.predict_proba(X)[:, 1]
+    assert proba.shape == (X.shape[0],)
+    assert np.all((proba >= 0) & (proba <= 1))
 
 
-def test_loss_is_finite_and_backprop_works():
-    feats, graph = _toy_graph()
-    y = torch.tensor(np.random.default_rng(1).integers(0, 2, size=feats.shape[0]), dtype=torch.float32)
-    model = GraphSAGE(in_dim=feats.shape[1], hidden_dim_1=16, hidden_dim_2=8, dropout=0.3)
-    x = torch.tensor(feats)
-    logits = model(x, graph.edge_index)
-    loss = torch.nn.functional.binary_cross_entropy_with_logits(logits, y)
-    assert torch.isfinite(loss)
-    loss.backward()
-    grad_norms = [p.grad.norm().item() for p in model.parameters() if p.grad is not None]
-    assert len(grad_norms) > 0
-    assert any(g > 0 for g in grad_norms)
+def test_random_forest_grid_has_multiple_candidates():
+    grid = get_random_forest_grid(seed=42)
+    assert len(grid) > 1
+    assert all(p["class_weight"] == "balanced" for p in grid)
 
 
-def test_checkpoint_save_and_reload_gives_same_output():
-    feats, graph = _toy_graph()
-    model = GCN(in_dim=feats.shape[1], hidden_dim_1=16, hidden_dim_2=8, dropout=0.0)
-    model.eval()
-    x = torch.tensor(feats)
-    with torch.no_grad():
-        out_before = model(x, graph.edge_index, graph.edge_weight)
-
-    state = model.state_dict()
-    model2 = GCN(in_dim=feats.shape[1], hidden_dim_1=16, hidden_dim_2=8, dropout=0.0)
-    model2.load_state_dict(state)
-    model2.eval()
-    with torch.no_grad():
-        out_after = model2(x, graph.edge_index, graph.edge_weight)
-
-    assert torch.allclose(out_before, out_after)
+def test_random_forest_fits_and_predicts_probabilities():
+    X, y = _toy_data()
+    params = get_random_forest_grid(seed=42)[0]
+    model = build_random_forest(params)
+    model.fit(X, y)
+    proba = model.predict_proba(X)[:, 1]
+    assert proba.shape == (X.shape[0],)
+    assert np.all((proba >= 0) & (proba <= 1))
+    assert hasattr(model, "feature_importances_")
 
 
-def test_inductive_inference_on_unseen_customers():
-    """A trained model must be able to score customers it never saw during
-    training, connected only to training-reference neighbors."""
-    train_feats, train_graph = _toy_graph(n=50, seed=2)
-    unseen_feats = np.random.default_rng(3).normal(size=(5, train_feats.shape[1])).astype(np.float32)
-
-    model = GraphSAGE(in_dim=train_feats.shape[1], hidden_dim_1=16, hidden_dim_2=8, dropout=0.0)
-    model.eval()
-
-    unseen_graph = build_inductive_edges(unseen_feats, train_feats, k=5)
-    combined = combine_graphs(train_graph, unseen_graph)
-    x_all = torch.tensor(np.concatenate([train_feats, unseen_feats], axis=0))
-    with torch.no_grad():
-        logits = model(x_all, combined.edge_index)
-    unseen_logits = logits[len(train_feats):]
-    assert unseen_logits.shape == (5,)
-    assert torch.isfinite(unseen_logits).all()
+@pytest.mark.skipif(not XGBOOST_AVAILABLE, reason="xgboost not available in this environment")
+def test_xgboost_fits_and_predicts_probabilities():
+    X, y = _toy_data()
+    params = get_xgboost_grid(seed=42, scale_pos_weight=1.0)[0]
+    model = build_xgboost(params)
+    model.fit(X, y)
+    proba = model.predict_proba(X)[:, 1]
+    assert proba.shape == (X.shape[0],)
+    assert np.all((proba >= 0) & (proba <= 1))

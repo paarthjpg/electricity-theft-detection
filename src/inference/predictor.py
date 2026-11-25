@@ -1,8 +1,7 @@
-"""Loads saved artifacts and serves theft-risk predictions for individual
-customers or batches, respecting the inductive leakage-safe protocol:
-a validation/test customer is always scored by connecting it only to
-TRAINING reference customers, never to other held-out customers.
-"""
+"""Loads saved baseline-model artifacts (Logistic Regression, Random Forest,
+XGBoost) and serves theft-risk predictions for individual customers or
+batches. Predictions are read from saved checkpoints only — nothing here
+retrains on a dashboard refresh."""
 from __future__ import annotations
 
 import json
@@ -10,27 +9,14 @@ from pathlib import Path
 
 import joblib
 import numpy as np
-import torch
-
-from src.graph.graph_builder import build_training_graph, build_inductive_edges, combine_graphs
-from src.models.gcn import GCN
-from src.models.graphsage import GraphSAGE
-
-
-def _build_model(model_name: str, in_dim: int, model_config: dict):
-    if model_name == "gcn":
-        return GCN(in_dim, model_config["hidden_dim_1"], model_config["hidden_dim_2"], model_config["dropout"])
-    if model_name == "graphsage":
-        return GraphSAGE(in_dim, model_config["hidden_dim_1"], model_config["hidden_dim_2"], model_config["dropout"])
-    raise ValueError(model_name)
 
 
 class TheftRiskPredictor:
     def __init__(self, processed_dir: Path, models_dir: Path, metrics_dir: Path, config: dict,
-                 model_tag: str = "graphsage_k5"):
+                 model_tag: str = "xgboost"):
         self.config = config
         self.processed_dir = Path(processed_dir)
-        self.metric = config["graph"]["metric"]
+        self.model_tag = model_tag
 
         self.customer_ids = np.load(self.processed_dir / "customer_ids.npy", allow_pickle=True)
         self.labels = np.load(self.processed_dir / "labels.npy")
@@ -50,31 +36,14 @@ class TheftRiskPredictor:
             for i in idx:
                 self.row_to_split[int(i)] = split_name
 
-        checkpoint = torch.load(models_dir / f"{model_tag}.pt", map_location="cpu", weights_only=False)
-        self.model_name = checkpoint["model_name"]
-        self.k = checkpoint["k"]
-        self.model = _build_model(self.model_name, checkpoint["in_dim"], checkpoint["model_config"])
-        self.model.load_state_dict(checkpoint["state_dict"])
-        self.model.eval()
+        self.model = joblib.load(Path(models_dir) / f"{model_tag}.joblib")
 
-        results_path = metrics_dir / f"{model_tag}_results.json"
         self.threshold = 0.5
+        results_path = Path(metrics_dir) / "baseline_results.json"
         if results_path.exists():
             with open(results_path) as f:
-                self.threshold = json.load(f).get("threshold", 0.5)
-
-        self._train_graph = build_training_graph(
-            self.features_scaled[self.splits["train"]], k=self.k, metric=self.metric
-        )
-        self._train_logits_cache = None
-
-    def _train_logits(self) -> torch.Tensor:
-        if self._train_logits_cache is None:
-            x_train = torch.tensor(self.features_scaled[self.splits["train"]], dtype=torch.float32)
-            edge_weight = self._train_graph.edge_weight if self.model_name == "gcn" else None
-            with torch.no_grad():
-                self._train_logits_cache = self.model(x_train, self._train_graph.edge_index, edge_weight)
-        return self._train_logits_cache
+                baseline_results = json.load(f)
+            self.threshold = baseline_results.get(model_tag, {}).get("threshold", 0.5)
 
     def risk_category(self, probability: float) -> str:
         thresholds = self.config["risk_thresholds"]
@@ -85,31 +54,11 @@ class TheftRiskPredictor:
         return "High"
 
     def predict_row(self, row: int) -> dict:
-        split = self.row_to_split.get(row, "train")
-        if split == "train":
-            train_rows = self.splits["train"]
-            local_idx = int(np.where(train_rows == row)[0][0])
-            logits = self._train_logits()
-            logit = logits[local_idx].item()
-        else:
-            query_feat = self.features_scaled[row:row + 1]
-            train_feats = self.features_scaled[self.splits["train"]]
-            held_graph = build_inductive_edges(query_feat, train_feats, k=self.k, metric=self.metric)
-            combined = combine_graphs(self._train_graph, held_graph)
-            x_all = torch.cat([
-                torch.tensor(train_feats, dtype=torch.float32),
-                torch.tensor(query_feat, dtype=torch.float32),
-            ], dim=0)
-            edge_weight = combined.edge_weight if self.model_name == "gcn" else None
-            with torch.no_grad():
-                logits = self.model(x_all, combined.edge_index, edge_weight)
-            logit = logits[-1].item()
-
-        probability = float(torch.sigmoid(torch.tensor(logit)).item())
+        probability = float(self.model.predict_proba(self.features_scaled[row:row + 1])[0, 1])
         predicted_class = int(probability >= self.threshold)
         return {
             "customer_id": self.customer_ids[row],
-            "split": split,
+            "split": self.row_to_split.get(row, "train"),
             "ground_truth_label": int(self.labels[row]),
             "theft_probability": probability,
             "predicted_class": predicted_class,
@@ -118,42 +67,9 @@ class TheftRiskPredictor:
         }
 
     def predict_rows_batch(self, rows: np.ndarray) -> np.ndarray:
-        """Vectorized probability prediction for many rows at once — one kNN
-        fit and one forward pass for the whole batch, instead of one each
-        per customer. Mixed train/held-out rows are handled correctly but
-        held-out rows are batched together for efficiency.
-        """
+        """Vectorized probability prediction for many rows at once."""
         rows = np.asarray(rows)
-        probs = np.zeros(len(rows), dtype=np.float64)
-
-        train_rows = self.splits["train"]
-        is_train = np.array([self.row_to_split.get(int(r), "train") == "train" for r in rows])
-
-        if is_train.any():
-            train_row_to_local = {int(r): i for i, r in enumerate(train_rows)}
-            train_logits = self._train_logits()
-            for i in np.where(is_train)[0]:
-                local_idx = train_row_to_local[int(rows[i])]
-                probs[i] = torch.sigmoid(train_logits[local_idx]).item()
-
-        held_mask = ~is_train
-        if held_mask.any():
-            held_rows = rows[held_mask]
-            query_feat = self.features_scaled[held_rows]
-            train_feats = self.features_scaled[train_rows]
-            held_graph = build_inductive_edges(query_feat, train_feats, k=self.k, metric=self.metric)
-            combined = combine_graphs(self._train_graph, held_graph)
-            x_all = torch.cat([
-                torch.tensor(train_feats, dtype=torch.float32),
-                torch.tensor(query_feat, dtype=torch.float32),
-            ], dim=0)
-            edge_weight = combined.edge_weight if self.model_name == "gcn" else None
-            with torch.no_grad():
-                logits = self.model(x_all, combined.edge_index, edge_weight)
-            held_logits = logits[len(train_rows):]
-            probs[held_mask] = torch.sigmoid(held_logits).numpy()
-
-        return probs
+        return self.model.predict_proba(self.features_scaled[rows])[:, 1]
 
     def predict_by_customer_id(self, customer_id: str) -> dict | None:
         row = self.id_to_row.get(customer_id)

@@ -84,7 +84,7 @@ st.subheader("Comparison Against Similar Consumers")
 train_rows = predictor.splits["train"]
 train_feats = data["features_scaled"][train_rows]
 from sklearn.neighbors import NearestNeighbors
-nn_model = NearestNeighbors(n_neighbors=min(5, len(train_rows)), metric=config["graph"]["metric"]).fit(train_feats)
+nn_model = NearestNeighbors(n_neighbors=min(5, len(train_rows)), metric="cosine").fit(train_feats)
 _, neighbor_idx = nn_model.kneighbors(data["features_scaled"][row:row + 1])
 neighbor_rows = train_rows[neighbor_idx[0]]
 neighbor_df = pd.DataFrame({
@@ -93,5 +93,5 @@ neighbor_df = pd.DataFrame({
     "Mean Consumption": data["features_raw"][neighbor_rows, data["feature_names"].index("mean_consumption")],
 })
 st.dataframe(neighbor_df, use_container_width=True, hide_index=True)
-st.caption("Nearest training-set neighbors in engineered-feature space (cosine similarity) — the same reference "
-           "customers this model would connect this customer to in the similarity graph.")
+st.caption("Nearest training-set neighbors in engineered-feature space (cosine similarity) — for interpretability only; "
+           "no graph structure is used by the model.")

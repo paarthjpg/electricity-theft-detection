@@ -26,27 +26,9 @@ preprocessing:
   extreme_value_zscore_threshold: 6.0
   min_customer_coverage: 0.10 # drop customers with <10% non-missing readings
 
-graph:
-  k: 5
-  metric: cosine
-  self_loops: true # GCN requires self-loops; SAGE handles separately
-
 quick_mode:
   enabled: false
   subset_size: 4000
-  max_epochs: 15
-  patience: 5
-
-full_mode:
-  max_epochs: 100
-  patience: 15
-
-model:
-  hidden_dim_1: 64
-  hidden_dim_2: 32
-  dropout: 0.3
-  learning_rate: 0.001
-  weight_decay: 0.0005
 
 risk_thresholds:
   low_max: 0.33

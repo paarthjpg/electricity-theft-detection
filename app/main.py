@@ -17,7 +17,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 st.set_page_config(
-    page_title="Electricity Theft Detection — GNN Analytics",
+    page_title="Electricity Theft Detection — Analytics",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -45,7 +45,7 @@ config = load_config()
 
 with st.sidebar:
     st.markdown("### ⚡ Theft Detection")
-    st.caption("Graph Neural Networks for Electricity Theft Detection")
+    st.caption("Machine Learning for Electricity Theft Detection")
     st.markdown("---")
 
     processed_dir_full = ROOT / config["paths"]["processed_dir"]
@@ -69,8 +69,8 @@ with st.sidebar:
     model_tags = []
     models_dir = ROOT / config["paths"]["models_dir"]
     if models_dir.exists():
-        model_tags = sorted(p.stem for p in models_dir.glob("*.pt"))
-    default_tag = "graphsage_k5" if "graphsage_k5" in model_tags else (model_tags[0] if model_tags else None)
+        model_tags = sorted(p.stem for p in models_dir.glob("*.joblib"))
+    default_tag = "xgboost" if "xgboost" in model_tags else (model_tags[0] if model_tags else None)
     chosen_model = (
         st.selectbox("Model for Risk Analysis", model_tags,
                      index=model_tags.index(default_tag) if default_tag in model_tags else 0,
@@ -82,8 +82,7 @@ with st.sidebar:
     st.markdown("---")
     st.markdown(
         "<p class='risk-note'>Predictions are indicators for investigation, not proof of "
-        "electricity theft. Graph edges represent inferred consumption similarity, not "
-        "verified physical electricity-grid connections.</p>",
+        "electricity theft.</p>",
         unsafe_allow_html=True,
     )
 
@@ -92,7 +91,6 @@ pg = st.navigation([
     st.Page(str(PAGES_DIR / "overview.py"), title="Overview", icon="🏠", default=True),
     st.Page(str(PAGES_DIR / "data_exploration.py"), title="Data Exploration", icon="🔎"),
     st.Page(str(PAGES_DIR / "customer_analysis.py"), title="Customer Risk Analysis", icon="🧑‍💼"),
-    st.Page(str(PAGES_DIR / "graph_visualization.py"), title="Graph Visualization", icon="🕸️"),
     st.Page(str(PAGES_DIR / "model_performance.py"), title="Model Performance", icon="📈"),
     st.Page(str(PAGES_DIR / "research_insights.py"), title="Research Insights", icon="🧪"),
 ])

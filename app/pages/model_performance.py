@@ -14,7 +14,7 @@ if str(ROOT) not in sys.path:
 from app.components.ui_helpers import load_config, load_metrics, load_processed_artifacts, load_predictor, get_paths, missing_artifacts_notice
 from app.components.charts import (
     model_comparison_bar_chart, roc_curve_chart, pr_curve_chart,
-    confusion_matrix_chart, precision_at_k_chart, training_curve_chart,
+    confusion_matrix_chart, precision_at_k_chart,
 )
 
 config = load_config()
@@ -60,7 +60,7 @@ if data is not None:
     splits = data["splits"]
     test_idx = splits["test"]
     predictor = load_predictor(paths["processed_dir"], paths["models_dir"], paths["metrics_dir"], config, model_for_curves) \
-        if (Path(paths["models_dir"]) / f"{model_for_curves}.pt").exists() else None
+        if (Path(paths["models_dir"]) / f"{model_for_curves}.joblib").exists() else None
     if predictor is not None:
         test_scores = predictor.predict_rows_batch(test_idx)
         test_labels = labels[test_idx]
@@ -70,16 +70,9 @@ if data is not None:
         with cc2:
             st.plotly_chart(pr_curve_chart(test_labels, test_scores, model_for_curves), use_container_width=True)
     else:
-        st.caption("ROC/PR curves require a GNN checkpoint (baseline sklearn models store the test score "
-                   "distribution in their results JSON instead; see the confusion matrix below).")
+        st.caption(f"No saved checkpoint for '{model_for_curves}' — run `scripts/run_training.py` first.")
 
 st.subheader("Confusion Matrix")
 cm_report = results.get(model_for_curves, {})
 if cm_report.get("confusion_matrix"):
     st.plotly_chart(confusion_matrix_chart(cm_report["confusion_matrix"]), use_container_width=True)
-
-st.subheader("Training History")
-if "history" in cm_report:
-    st.plotly_chart(training_curve_chart(cm_report["history"]), use_container_width=True)
-else:
-    st.caption(f"'{model_for_curves}' has no training-curve history (not a GNN, or history was not recorded).")

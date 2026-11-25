@@ -71,7 +71,7 @@ def load_metrics(metrics_dir_str: str) -> dict:
 def load_predictor(processed_dir_str: str, models_dir_str: str, metrics_dir_str: str,
                     _config: dict, model_tag: str):
     from src.inference.predictor import TheftRiskPredictor
-    checkpoint_path = Path(models_dir_str) / f"{model_tag}.pt"
+    checkpoint_path = Path(models_dir_str) / f"{model_tag}.joblib"
     if not checkpoint_path.exists():
         return None
     return TheftRiskPredictor(Path(processed_dir_str), Path(models_dir_str), Path(metrics_dir_str),

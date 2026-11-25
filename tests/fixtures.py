@@ -50,10 +50,6 @@ def make_synthetic_config(tmp_path=None):
         },
         "split": {"train_frac": 0.7, "val_frac": 0.15, "test_frac": 0.15},
         "preprocessing": {"extreme_value_zscore_threshold": 6.0, "min_customer_coverage": 0.1},
-        "graph": {"k": 5, "metric": "cosine", "self_loops": True},
-        "model": {"hidden_dim_1": 16, "hidden_dim_2": 8, "dropout": 0.3,
-                   "learning_rate": 0.01, "weight_decay": 0.0005},
-        "quick_mode": {"enabled": True, "subset_size": 60, "max_epochs": 5, "patience": 3},
-        "full_mode": {"max_epochs": 5, "patience": 3},
+        "quick_mode": {"enabled": True, "subset_size": 60},
         "risk_thresholds": {"low_max": 0.33, "medium_max": 0.66},
     }

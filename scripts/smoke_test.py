@@ -1,6 +1,6 @@
 """End-to-end smoke test on a small SYNTHETIC fixture (not SGCC data):
-load -> preprocess -> features -> split -> graph -> baseline -> GNN ->
-evaluation -> artifact save/load -> inference. Fast, for CI / quick checks.
+load -> preprocess -> features -> split -> baseline train -> evaluation ->
+artifact save/load -> inference. Fast, for CI / quick checks.
 
 Never presents these numbers as SGCC results — see data/raw/DATA_SOURCE.md.
 """
@@ -20,10 +20,7 @@ from src.data.loader import resolve_schema
 from src.data.validation import validate_raw_dataset
 from src.data.preprocessing import clean_dataset, impute_missing, split_customers
 from src.data.feature_engineering import compute_features, FEATURE_NAMES
-from src.graph.graph_builder import build_training_graph, build_inductive_edges, combine_graphs
-from src.graph.graph_analysis import compute_graph_statistics
 from src.models.baselines import get_logistic_regression_grid, build_logistic_regression
-from src.training.train_gnn import train_gnn
 from src.evaluation.metrics import full_evaluation_report
 from sklearn.preprocessing import StandardScaler
 import joblib
@@ -70,12 +67,7 @@ def main():
         np.savez(processed_dir / "splits.npz", **splits)
         joblib.dump(scaler, models_dir / "feature_scaler.joblib")
 
-        print("7. Building training graph...")
-        train_graph = build_training_graph(features_scaled[splits["train"]], k=config["graph"]["k"])
-        stats = compute_graph_statistics(train_graph)
-        assert stats["n_nodes"] == len(splits["train"])
-
-        print("8. Training baseline (Logistic Regression)...")
+        print("7. Training baseline (Logistic Regression)...")
         y_train = ids_labels[schema.label_col].to_numpy()[splits["train"]]
         y_test = ids_labels[schema.label_col].to_numpy()[splits["test"]]
         model = build_logistic_regression(get_logistic_regression_grid(config["seed"])[0])
@@ -84,17 +76,11 @@ def main():
         baseline_report = full_evaluation_report(y_test, test_score, threshold=0.5)
         assert baseline_report["pr_auc"] is not None
 
-        print("9. Training GraphSAGE (inductive, synthetic, quick settings)...")
-        gnn_report = train_gnn(
-            "graphsage", config, processed_dir, models_dir, metrics_dir,
-            k=config["graph"]["k"], quick=True, tag="smoke_graphsage",
-        )
-        assert np.isfinite(gnn_report["history"]["train_loss"]).all()
-
-        print("10. Loading saved checkpoint and running inference on a held-out customer...")
-        import torch
-        checkpoint = torch.load(models_dir / "smoke_graphsage.pt", map_location="cpu", weights_only=False)
-        assert checkpoint["model_name"] == "graphsage"
+        print("8. Saving checkpoint and reloading for inference...")
+        joblib.dump(model, models_dir / "smoke_logistic_regression.joblib")
+        reloaded = joblib.load(models_dir / "smoke_logistic_regression.joblib")
+        reloaded_score = reloaded.predict_proba(features_scaled[splits["test"]])[:, 1]
+        assert np.allclose(test_score, reloaded_score)
 
     print("\nSMOKE TEST PASSED: full pipeline runs end-to-end on synthetic data with no leakage violations.")
 
